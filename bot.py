@@ -114,17 +114,69 @@ async def inv(ctx):
 
     await ctx.send(embed=embed)
 
-# Example claim panel placeholder (can be extended later)
+# ----------------CLAIM PANEL ----------------------
+
+class ClaimView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)  # permanent buttons
+
+    @discord.ui.button(label="💰 Check Balance", style=discord.ButtonStyle.green)
+    async def check_balance(self, interaction: discord.Interaction, button: discord.ui.Button):
+        c.execute("SELECT balance FROM users WHERE discord_id = ?", (interaction.user.id,))
+        row = c.fetchone()
+        balance = row[0] if row else 0
+
+        embed = discord.Embed(
+            title=f"{interaction.user.name}'s Balance",
+            description=f"💰 You currently have **{balance} PC**",
+            color=discord.Color.green()
+        )
+        embed.set_footer(text=FOOTER_TEXT, icon_url=bot.user.avatar.url if bot.user.avatar else None)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="📦 Claim PC", style=discord.ButtonStyle.blurple)
+    async def claim_pc(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Example claim logic (customize later with market ID input etc.)
+        c.execute("INSERT OR IGNORE INTO users (discord_id) VALUES (?)", (interaction.user.id,))
+        c.execute("UPDATE users SET claimed = claimed + 1 WHERE discord_id = ?", (interaction.user.id,))
+        conn.commit()
+
+        log_channel = discord.utils.get(interaction.guild.text_channels, name="claims-log")
+        if log_channel is None:
+            log_channel = await interaction.guild.create_text_channel("claims-log")
+
+        embed = discord.Embed(
+            title="📦 New Claim Submitted",
+            description=f"User: {interaction.user.mention}\nMarket ID: *(to be added by user)*\nValue: *(pending)*",
+            color=discord.Color.purple()
+        )
+        embed.set_footer(text=FOOTER_TEXT, icon_url=bot.user.avatar.url if bot.user.avatar else None)
+        await log_channel.send(embed=embed)
+
+        await interaction.response.send_message("✅ Your claim has been recorded and is pending admin review.", ephemeral=True)
+
+
 @bot.command()
 async def claimpanel(ctx):
     embed = discord.Embed(
         title="Poketwo Claim Panel",
-        description="Use the buttons below to claim Pokecoins or check your balance.",
+        description=(
+            "Welcome to the **Claim Panel**!\n\n"
+            "👉 Use the buttons below:\n"
+            "• **💰 Check Balance** → See how many Pokecoins (PC) you currently have.\n"
+            "• **📦 Claim PC** → Submit a claim for your Pokecoins.\n\n"
+            "📜 Note:\n"
+            "- All claims go into the `#claims-log` channel for admin approval.\n"
+            "- Admins can Accept/Reject manually.\n"
+            "- On Accept → you will be credited.\n"
+            "- On Reject → you will be notified in DM.\n\n"
+            "⚡ Integrated with **Tobi.exe** style claim box per 100 messages!"
+        ),
         color=discord.Color.purple()
     )
     embed.set_footer(text=FOOTER_TEXT, icon_url=bot.user.avatar.url if bot.user.avatar else None)
-    await ctx.send(embed=embed)
 
+    await ctx.send(embed=embed, view=ClaimView())
 # -----------------------------
 # Flask Thread
 # -----------------------------
