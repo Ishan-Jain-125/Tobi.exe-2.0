@@ -16,6 +16,16 @@ intents.members = True
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
 DB_PATH = "data.db"
+FOOTER_TEXT = "Made By Kabir Juneja and Ishan Jain"
+bot_avatar_url = None  # global store for avatar
+
+# ================= FOOTER HELPER =================
+def set_footer_custom(embed: discord.Embed):
+    if bot_avatar_url:
+        embed.set_footer(text=FOOTER_TEXT, icon_url=bot_avatar_url)
+    else:
+        embed.set_footer(text=FOOTER_TEXT)
+    return embed
 
 # ================= DATABASE =================
 def init_db():
@@ -67,6 +77,9 @@ async def run_aiohttp():
 # ================= DISCORD BOT EVENTS =================
 @bot.event
 async def on_ready():
+    global bot_avatar_url
+    bot_avatar_url = bot.user.avatar.url if bot.user.avatar else None
+
     print(f"✅ Bot ready as {bot.user}")
     try:
         synced = await bot.tree.sync()
@@ -102,7 +115,13 @@ async def addbal(ctx, amount: int, user: discord.Member):
     c.execute("UPDATE users SET bal = bal + ? WHERE user_id = ?", (amount, user.id))
     conn.commit()
     conn.close()
-    await ctx.send(f"✅ Added {amount} PC to {user.mention}'s account!")
+    embed = discord.Embed(
+        title="💳 Balance Updated",
+        description=f"✅ Added {amount} PC to {user.mention}'s account!",
+        color=discord.Color.gold()
+    )
+    set_footer_custom(embed)
+    await ctx.send(embed=embed)
     try:
         await user.send(f"💰 You have been credited with {amount} PC in your account!")
     except:
@@ -132,6 +151,7 @@ async def inv(ctx, user: discord.Member = None):
     embed.add_field(name="📩 Messages", value=messages, inline=True)
     embed.add_field(name="💰 Balance", value=f"{bal} PC", inline=True)
     embed.add_field(name="📦 Claimed", value=claimed, inline=True)
+    set_footer_custom(embed)
 
     await ctx.send(embed=embed)
 
@@ -149,7 +169,13 @@ class ClaimPanel(discord.ui.View):
         result = c.fetchone()
         conn.close()
         balance = result[0] if result else 0
-        await interaction.response.send_message(f"💰 You have {balance} PC!", ephemeral=True)
+        embed = discord.Embed(
+            title="💰 Balance Info",
+            description=f"You have {balance} PC!",
+            color=discord.Color.green()
+        )
+        set_footer_custom(embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(label="Claim PC", style=discord.ButtonStyle.blurple)
     async def claim_pc(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -181,6 +207,7 @@ class ClaimModal(discord.ui.Modal, title="Claim Pokémon"):
         embed.add_field(name="User", value=user.mention, inline=False)
         embed.add_field(name="Market ID", value=self.market_id.value, inline=True)
         embed.add_field(name="Price", value=f"{price} PC", inline=True)
+        set_footer_custom(embed)
 
         await log_channel.send(embed=embed)
 
@@ -195,7 +222,13 @@ class ClaimModal(discord.ui.Modal, title="Claim Pokémon"):
         except:
             pass
 
-        await interaction.response.send_message("✅ Claim submitted successfully!", ephemeral=True)
+        confirm = discord.Embed(
+            title="✅ Claim Submitted",
+            description="Your claim has been submitted successfully!",
+            color=discord.Color.green()
+        )
+        set_footer_custom(confirm)
+        await interaction.response.send_message(embed=confirm, ephemeral=True)
 
 # ================= PANEL COMMAND =================
 @bot.command()
@@ -205,12 +238,19 @@ async def panel(ctx):
         description="Use the buttons below to check balance or claim PC.",
         color=discord.Color.orange()
     )
+    set_footer_custom(embed)
     await ctx.send(embed=embed, view=ClaimPanel())
 
 # ================= SLASH COMMANDS =================
 @bot.tree.command(name="ping", description="Check bot latency")
 async def ping_slash(interaction: discord.Interaction):
-    await interaction.response.send_message("🏓 Pong!")
+    embed = discord.Embed(
+        title="🏓 Pong!",
+        description=f"Latency: {round(bot.latency*1000)}ms",
+        color=discord.Color.purple()
+    )
+    set_footer_custom(embed)
+    await interaction.response.send_message(embed=embed)
 
 # ================= MAIN RUN =================
 async def main():
