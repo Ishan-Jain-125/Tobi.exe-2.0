@@ -1,267 +1,223 @@
-import os
-import sqlite3
-import asyncio
-from threading import Thread
-from flask import Flask
-from discord.ext import commands
 import discord
-from discord import app_commands
-from aiohttp import web
+from discord.ext import commands
+import sqlite3, os, asyncio
+from flask import Flask
+import threading
 
-# ================= CONFIG =================
-PREFIX = "."
+# ---------- CONFIG ----------
+TOKEN = os.getenv("DISCORD_TOKEN")  # apna token env me daalo
+GUILD_ID = int(os.getenv("GUILD_ID", "YOUR_GUILD_ID"))  # apna guild id
+DB_PATH = "database.db"
+
+# ---------- INTENTS ----------
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
-bot = commands.Bot(command_prefix=PREFIX, intents=intents)
+bot = commands.Bot(command_prefix=".", intents=intents)
 
-DB_PATH = "data.db"
-FOOTER_TEXT = "Made By Kabir Juneja and Ishan Jain"
-bot_avatar_url = None  # global store for avatar
+# ---------- FLASK SERVER ----------
+app = Flask(__name__)
 
-# ================= FOOTER HELPER =================
-def set_footer_custom(embed: discord.Embed):
-    if bot_avatar_url:
-        embed.set_footer(text=FOOTER_TEXT, icon_url=bot_avatar_url)
-    else:
-        embed.set_footer(text=FOOTER_TEXT)
-    return embed
+@app.route("/")
+def home():
+    return "Bot is running!"
 
-# ================= DATABASE =================
+def run_flask():
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
+
+threading.Thread(target=run_flask).start()
+
+# ---------- DATABASE ----------
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+    # Users table
     c.execute("""
     CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY,
+        discord_id INTEGER PRIMARY KEY,
+        balance INTEGER DEFAULT 0,
         messages INTEGER DEFAULT 0,
-        bal INTEGER DEFAULT 0,
         claimed INTEGER DEFAULT 0
+    )
+    """)
+    # Claims table
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS claims (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        discord_id INTEGER,
+        market_id TEXT,
+        value INTEGER,
+        status TEXT DEFAULT 'pending'
     )
     """)
     conn.commit()
     conn.close()
 
-def add_user_if_not_exists(user_id: int):
+def get_user(discord_id):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+    c.execute("SELECT * FROM users WHERE discord_id=?", (discord_id,))
+    row = c.fetchone()
+    if not row:
+        c.execute("INSERT INTO users (discord_id) VALUES (?)", (discord_id,))
+        conn.commit()
+        conn.close()
+        return (discord_id, 0, 0, 0)
+    conn.close()
+    return row
+
+def update_balance(discord_id, amount):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    get_user(discord_id)
+    c.execute("UPDATE users SET balance = balance + ? WHERE discord_id=?", (amount, discord_id))
     conn.commit()
     conn.close()
 
-# ================= FLASK REAL SERVER =================
-flask_app = Flask("main")
-
-@flask_app.route("/")
-def home():
-    return "✅ Flask server running (real uptime)"
-
-def run_flask():
-    port = int(os.environ.get("PORT", 8080))  # Render uses $PORT
-    flask_app.run(host="0.0.0.0", port=port)
-
-# ================= AIOHTTP DUMMY SERVER =================
-async def aiohttp_handle(request):
-    return web.Response(text="👋 Dummy aiohttp server is alive!")
-
-async def run_aiohttp():
-    app = web.Application()
-    app.router.add_get("/", aiohttp_handle)
-    dummy_port = int(os.environ.get("DUMMY_PORT", 9090))  # default dummy 9090
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", dummy_port)
-    await site.start()
-    print(f"🚀 aiohttp dummy server running on port {dummy_port}")
-
-# ================= DISCORD BOT EVENTS =================
-@bot.event
-async def on_ready():
-    global bot_avatar_url
-    bot_avatar_url = bot.user.avatar.url if bot.user.avatar else None
-
-    print(f"✅ Bot ready as {bot.user}")
-    try:
-        synced = await bot.tree.sync()
-        print(f"🌐 Synced {len(synced)} slash commands")
-    except Exception as e:
-        print(f"❌ Slash sync failed: {e}")
-
-    # create claims-log channel if not exists
-    for guild in bot.guilds:
-        log_channel = discord.utils.get(guild.text_channels, name="claims-log")
-        if not log_channel:
-            await guild.create_text_channel("claims-log")
-
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
-    add_user_if_not_exists(message.author.id)
+def update_claimed(discord_id, count=1):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("UPDATE users SET messages = messages + 1 WHERE user_id = ?", (message.author.id,))
+    get_user(discord_id)
+    c.execute("UPDATE users SET claimed = claimed + ? WHERE discord_id=?", (count, discord_id))
     conn.commit()
     conn.close()
-    await bot.process_commands(message)
 
-# ================= ADMIN COMMANDS =================
-@bot.command()
-@commands.has_permissions(administrator=True)
-async def addbal(ctx, amount: int, user: discord.Member):
-    add_user_if_not_exists(user.id)
+def add_claim(discord_id, market_id, value):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("UPDATE users SET bal = bal + ? WHERE user_id = ?", (amount, user.id))
+    c.execute("INSERT INTO claims (discord_id, market_id, value, status) VALUES (?, ?, ?, 'pending')",
+              (discord_id, market_id, value))
     conn.commit()
     conn.close()
-    embed = discord.Embed(
-        title="💳 Balance Updated",
-        description=f"✅ Added {amount} PC to {user.mention}'s account!",
-        color=discord.Color.gold()
-    )
-    set_footer_custom(embed)
-    await ctx.send(embed=embed)
-    try:
-        await user.send(f"💰 You have been credited with {amount} PC in your account!")
-    except:
-        pass
 
-# ================= USER COMMANDS =================
-@bot.command()
-async def inv(ctx, user: discord.Member = None):
-    if user is None:
-        user = ctx.author
-    add_user_if_not_exists(user.id)
+def set_claim_status(claim_id, status):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT messages, bal, claimed FROM users WHERE user_id = ?", (user.id,))
-    result = c.fetchone()
+    c.execute("UPDATE claims SET status=? WHERE id=?", (status, claim_id))
+    conn.commit()
     conn.close()
 
-    if result:
-        messages, bal, claimed = result
-    else:
-        messages, bal, claimed = 0, 0, 0
-
-    embed = discord.Embed(
-        title=f"📊 Inventory for {user.display_name}",
-        color=discord.Color.green()
-    )
-    embed.add_field(name="📩 Messages", value=messages, inline=True)
-    embed.add_field(name="💰 Balance", value=f"{bal} PC", inline=True)
-    embed.add_field(name="📦 Claimed", value=claimed, inline=True)
-    set_footer_custom(embed)
-
-    await ctx.send(embed=embed)
-
-# ================= CLAIM PANEL =================
+# ---------- CLAIM PANEL ----------
 class ClaimPanel(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="Check Balance", style=discord.ButtonStyle.green)
+    @discord.ui.button(label="Check Balance", style=discord.ButtonStyle.primary, custom_id="check_balance")
     async def check_balance(self, interaction: discord.Interaction, button: discord.ui.Button):
-        add_user_if_not_exists(interaction.user.id)
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("SELECT bal FROM users WHERE user_id = ?", (interaction.user.id,))
-        result = c.fetchone()
-        conn.close()
-        balance = result[0] if result else 0
+        user = get_user(interaction.user.id)
+        balance, messages, claimed = user[1], user[2], user[3]
         embed = discord.Embed(
-            title="💰 Balance Info",
-            description=f"You have {balance} PC!",
-            color=discord.Color.green()
+            title=f"{interaction.user.name} ka Inventory",
+            color=discord.Color.green(),
+            description="📌 Aapki account ki details niche di gayi hai."
         )
-        set_footer_custom(embed)
+        embed.add_field(name="Balance", value=f"{balance} PC", inline=False)
+        embed.add_field(name="Messages", value=f"{messages}", inline=True)
+        embed.add_field(name="Claimed", value=f"{claimed}", inline=True)
+        embed.set_footer(text="Made By Kabir Juneja and Ishan Jain", icon_url=interaction.client.user.avatar.url)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @discord.ui.button(label="Claim PC", style=discord.ButtonStyle.blurple)
+    @discord.ui.button(label="Claim PC", style=discord.ButtonStyle.success, custom_id="claim_pc")
     async def claim_pc(self, interaction: discord.Interaction, button: discord.ui.Button):
         modal = ClaimModal()
         await interaction.response.send_modal(modal)
 
-class ClaimModal(discord.ui.Modal, title="Claim Pokémon"):
-    market_id = discord.ui.TextInput(label="Market ID", placeholder="Enter Pokémon Market ID")
-    price = discord.ui.TextInput(label="Price", placeholder="Enter Pokémon Price in PC")
+# ---------- CLAIM MODAL ----------
+class ClaimModal(discord.ui.Modal, title="Claim Pokecoins"):
+    market_id = discord.ui.TextInput(label="Market ID", style=discord.TextStyle.short, required=True)
+    value = discord.ui.TextInput(label="Value (PC)", style=discord.TextStyle.short, required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
-        user = interaction.user
-        add_user_if_not_exists(user.id)
-
         try:
-            price = int(self.price.value)
-        except ValueError:
-            await interaction.response.send_message("❌ Invalid price!", ephemeral=True)
+            value = int(self.value.value)
+        except:
+            await interaction.response.send_message("❌ Invalid value!", ephemeral=True)
             return
 
-        log_channel = discord.utils.get(interaction.guild.text_channels, name="claims-log")
-        if not log_channel:
-            log_channel = await interaction.guild.create_text_channel("claims-log")
+        user = get_user(interaction.user.id)
+        balance = user[1]
+        if value > balance:
+            await interaction.response.send_message("⚠️ Invalid Price! Tumhare paas itna balance nahi hai.", ephemeral=True)
+            return
 
-        embed = discord.Embed(
-            title="New Claim",
-            color=discord.Color.blue()
-        )
-        embed.add_field(name="User", value=user.mention, inline=False)
-        embed.add_field(name="Market ID", value=self.market_id.value, inline=True)
-        embed.add_field(name="Price", value=f"{price} PC", inline=True)
-        set_footer_custom(embed)
+        # Save claim in DB
+        add_claim(interaction.user.id, self.market_id.value, value)
 
-        await log_channel.send(embed=embed)
+        # Send embed to claim-log channel
+        guild = interaction.client.get_guild(GUILD_ID)
+        if guild:
+            channel = discord.utils.get(guild.text_channels, name="claims-log")
+            if not channel:
+                channel = await guild.create_text_channel("claims-log")
 
-        conn = sqlite3.connect(DB_PATH)
-        c = conn.cursor()
-        c.execute("UPDATE users SET claimed = claimed + 1, bal = bal + ? WHERE user_id = ?", (price, user.id))
-        conn.commit()
-        conn.close()
+            embed = discord.Embed(title="New Claim Request", color=discord.Color.orange())
+            embed.add_field(name="User", value=f"{interaction.user.mention}", inline=False)
+            embed.add_field(name="Market ID", value=self.market_id.value, inline=True)
+            embed.add_field(name="Value", value=f"{value} PC", inline=True)
+            embed.set_footer(text="Made By Kabir Juneja and Ishan Jain", icon_url=interaction.client.user.avatar.url)
 
-        try:
-            await user.send(f"✅ You have claimed your Pokémon (Market ID: {self.market_id.value}) for {price} PC. Now vouch!")
-        except:
-            pass
+            await channel.send(embed=embed, view=ClaimApprovalView(interaction.user.id, self.market_id.value, value))
 
-        confirm = discord.Embed(
-            title="✅ Claim Submitted",
-            description="Your claim has been submitted successfully!",
-            color=discord.Color.green()
-        )
-        set_footer_custom(confirm)
-        await interaction.response.send_message(embed=confirm, ephemeral=True)
+        await interaction.response.send_message("✅ Tumhari claim request pending hai. Admin review karenge.", ephemeral=True)
 
-# ================= PANEL COMMAND =================
+# ---------- ADMIN APPROVAL ----------
+class ClaimApprovalView(discord.ui.View):
+    def __init__(self, user_id, market_id, value):
+        super().__init__(timeout=None)
+        self.user_id = user_id
+        self.market_id = market_id
+        self.value = value
+
+    @discord.ui.button(label="Accept", style=discord.ButtonStyle.success, custom_id="accept_claim")
+    async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
+        update_balance(self.user_id, -self.value)
+        update_claimed(self.user_id, 1)
+        await interaction.response.send_message("✅ Claim Accepted!", ephemeral=True)
+        user = await bot.fetch_user(self.user_id)
+        await user.send(f"🎉 Tumhara claim (Market ID: {self.market_id}, Value: {self.value} PC) ACCEPT ho gaya hai!")
+
+    @discord.ui.button(label="Reject", style=discord.ButtonStyle.danger, custom_id="reject_claim")
+    async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("❌ Claim Rejected!", ephemeral=True)
+        user = await bot.fetch_user(self.user_id)
+        await user.send(f"⚠️ Tumhara claim (Market ID: {self.market_id}, Value: {self.value} PC) REJECT ho gaya hai! Invalid Market ID or Price.")
+
+# ---------- COMMANDS ----------
 @bot.command()
-async def panel(ctx):
-    embed = discord.Embed(
-        title="🎯 Claim Panel",
-        description="Use the buttons below to check balance or claim PC.",
-        color=discord.Color.orange()
-    )
-    set_footer_custom(embed)
-    await ctx.send(embed=embed, view=ClaimPanel())
+@commands.has_permissions(administrator=True)
+async def addbal(ctx, value: int, member: discord.Member):
+    update_balance(member.id, value)
+    embed = discord.Embed(title="Balance Credited", color=discord.Color.blue())
+    embed.add_field(name="User", value=member.mention)
+    embed.add_field(name="Amount", value=f"{value} PC")
+    embed.set_footer(text="Made By Kabir Juneja and Ishan Jain", icon_url=ctx.bot.user.avatar.url)
+    await ctx.send(embed=embed)
+    try:
+        await member.send(f"💰 Tumhare account me {value} PC credit kiye gaye hai!")
+    except:
+        pass
 
-# ================= SLASH COMMANDS =================
-@bot.tree.command(name="ping", description="Check bot latency")
-async def ping_slash(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="🏓 Pong!",
-        description=f"Latency: {round(bot.latency*1000)}ms",
-        color=discord.Color.purple()
-    )
-    set_footer_custom(embed)
-    await interaction.response.send_message(embed=embed)
+@bot.command()
+async def inv(ctx):
+    user = get_user(ctx.author.id)
+    balance, messages, claimed = user[1], user[2], user[3]
+    embed = discord.Embed(title=f"{ctx.author.name} ka Inventory", color=discord.Color.green())
+    embed.add_field(name="Balance", value=f"{balance} PC")
+    embed.add_field(name="Messages", value=str(messages))
+    embed.add_field(name="Claimed", value=str(claimed))
+    embed.set_footer(text="Made By Kabir Juneja and Ishan Jain", icon_url=ctx.bot.user.avatar.url)
+    await ctx.send(embed=embed)
 
-# ================= MAIN RUN =================
-async def main():
+@bot.slash_command(name="ping", description="Check bot latency")
+async def ping(ctx: discord.ApplicationContext):
+    await ctx.respond(f"🏓 Pong! Latency: {round(bot.latency*1000)}ms")
+
+# ---------- EVENTS ----------
+@bot.event
+async def on_ready():
     init_db()
-    asyncio.create_task(run_aiohttp())
-    TOKEN = os.getenv("DISCORD_TOKEN")
-    if not TOKEN:
-        print("❌ No DISCORD_TOKEN set in environment variables")
-        return
-    await bot.start(TOKEN)
+    bot.add_view(ClaimPanel())
+    print(f"✅ Bot online as {bot.user}")
 
-if __name__ == "__main__":
-    Thread(target=run_flask, daemon=True).start()
-    asyncio.run(main())
+# ---------- RUN ----------
+bot.run(TOKEN)
