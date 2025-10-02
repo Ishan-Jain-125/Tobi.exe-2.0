@@ -158,7 +158,7 @@ class ClaimView(discord.ui.View):
 async def claimpanel(ctx):
     # ✅ Sirf tu (Ishan Jain ka Discord ID)
     if ctx.author.id != 1364880828949336088:
-        await ctx.send("❌ Sirf bot owner is command ko use kar sakta hai.")
+        await ctx.send("❌ Only Bot Owners Can Use This.")
         return
 
     embed = discord.Embed(
