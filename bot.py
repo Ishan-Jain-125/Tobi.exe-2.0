@@ -165,22 +165,20 @@ async def claimpanel(ctx):
         title="Poketwo Claim Panel",
         description=(
             "📦 **Welcome to Poketwo Claim Panel**\n\n"
-            "👋 Hello Trainer! Ye system specially banaya gaya hai taaki tum apne Pokecoins (PC) "
-            "claim aur manage kar sako.\n\n"
+            "👋 Hello Trainer! This Is Claim System To Claim Your Collected Pokecoins (PC) .\n"
+            
             "⚙️ **How it works:**\n"
-            "1. **💰 Check Balance** → Dekho tumhare paas kitne PC hai.\n"
-            "2. **📦 Claim PC** → Apna Market ID + Price dal ke claim submit karo.\n"
-            "   - Agar tumhare balance se zyada PC daloge → ❌ Invalid Price.\n"
-            "   - Agar sahi hai → Claim `#claims-log` channel me jayega.\n\n"
+            "1. **💰 Check Balance** → See How Many Pokecoins Yiu Have In Your Account .\n"
+            "2. **📦 Claim PC** → Send  Your Market ID + Price To Submit For Admin Inspection .\n"
+            
             "🛠 **Admin Process:**\n"
-            "- Admin claim ko ✅ Accept ya ❌ Reject karenge.\n"
-            "- Agar Accept hua → Balance se PC deduct honge + tumhe DM me confirmation.\n"
-            "- Agar Reject hua → DM me invalid Market ID ya Price ka message.\n\n"
+             "You Will Be Notified By The Bot In DM About Your Request.\n"
+            
+            
             "📜 **Additional Info:**\n"
-            "- Har user ke claims ka record DB me maintain hota hai.\n"
-            "- Claimed count alag se track hota hai.\n"
-            "- Integration with **Tobi.exe style**: Har 100 messages par ek reward box milega "
-            "jo claim panel ke balance me add ho jayega.\n\n"
+            
+            "- Integration with **Tobi.exe style**: Yiu Will Get A Mystry Box Per 100 Messages.\n"
+            
             "⚡ Use the buttons below to get started!"
         ),
         color=discord.Color.purple()
