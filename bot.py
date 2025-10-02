@@ -115,45 +115,84 @@ async def inv(ctx):
     await ctx.send(embed=embed)
 
 # ----------------CLAIM PANEL ----------------------
+# ================================
+# Claim Modal (User submits claim)
+# ================================
+class ClaimModal(discord.ui.Modal, title="Claim Your Pokecoins"):
+    market_id = discord.ui.TextInput(label="Market ID", placeholder="Enter the Market ID", required=True)
+    price = discord.ui.TextInput(label="Price (in PC)", placeholder="Enter the price", required=True)
 
-class ClaimView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)  # permanent buttons
-
-    @discord.ui.button(label="💰 Check Balance", style=discord.ButtonStyle.green)
-    async def check_balance(self, interaction: discord.Interaction, button: discord.ui.Button):
-        c.execute("SELECT balance FROM users WHERE discord_id = ?", (interaction.user.id,))
-        row = c.fetchone()
-        balance = row[0] if row else 0
-
-        embed = discord.Embed(
-            title=f"{interaction.user.name}'s Balance",
-            description=f"💰 You currently have **{balance} PC**",
-            color=discord.Color.green()
-        )
-        embed.set_footer(text=FOOTER_TEXT, icon_url=bot.user.avatar.url if bot.user.avatar else None)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @discord.ui.button(label="📦 Claim PC", style=discord.ButtonStyle.blurple)
-    async def claim_pc(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Example claim logic (customize later with market ID input etc.)
-        c.execute("INSERT OR IGNORE INTO users (discord_id) VALUES (?)", (interaction.user.id,))
-        c.execute("UPDATE users SET claimed = claimed + 1 WHERE discord_id = ?", (interaction.user.id,))
-        conn.commit()
-
+    async def on_submit(self, interaction: discord.Interaction):
+        # ✅ User ne claim submit kiya
         log_channel = discord.utils.get(interaction.guild.text_channels, name="claims-log")
-        if log_channel is None:
+        if not log_channel:
             log_channel = await interaction.guild.create_text_channel("claims-log")
 
         embed = discord.Embed(
             title="📦 New Claim Submitted",
-            description=f"User: {interaction.user.mention}\nMarket ID: *(to be added by user)*\nValue: *(pending)*",
-            color=discord.Color.purple()
+            description=(
+                f"👤 User: {interaction.user.mention}\n"
+                f"🆔 Market ID: `{self.market_id.value}`\n"
+                f"💰 Price: **{self.price.value} PC**"
+            ),
+            color=discord.Color.orange()
         )
-        embed.set_footer(text=FOOTER_TEXT, icon_url=bot.user.avatar.url if bot.user.avatar else None)
-        await log_channel.send(embed=embed)
+        if interaction.user.avatar:
+            embed.set_thumbnail(url=interaction.user.avatar.url)
 
-        await interaction.response.send_message("✅ Your claim has been recorded and is pending admin review.", ephemeral=True)
+        embed.set_footer(
+            text="Made By Kabir Juneja and Ishan Jain",
+            icon_url=interaction.client.user.avatar.url if interaction.client.user.avatar else None
+        )
+
+        # Send claim to logs with Accept/Reject buttons
+        await log_channel.send(embed=embed, view=ClaimApprovalView(interaction.user, self.market_id.value, self.price.value))
+
+        await interaction.response.send_message("✅ Claim submitted! Pending admin review.", ephemeral=True)
+
+
+# ================================
+# Claim Approval Buttons (Admin)
+# ================================
+class ClaimApprovalView(discord.ui.View):
+    def __init__(self, user, market_id, price):
+        super().__init__(timeout=None)
+        self.user = user
+        self.market_id = market_id
+        self.price = price
+
+    @discord.ui.button(label="✅ Accept", style=discord.ButtonStyle.success)
+    async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            await self.user.send(f"🎉 Your claim has been **accepted**!\n🆔 Market ID: `{self.market_id}`\n💰 Price: {self.price} PC")
+            await interaction.response.send_message("✅ Claim accepted.", ephemeral=True)
+        except:
+            await interaction.response.send_message("⚠️ Could not DM the user.", ephemeral=True)
+
+    @discord.ui.button(label="❌ Reject", style=discord.ButtonStyle.danger)
+    async def reject(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            await self.user.send(f"❌ Your claim has been **rejected**.\n🆔 Market ID: `{self.market_id}`\n💰 Price: {self.price} PC")
+            await interaction.response.send_message("❌ Claim rejected.", ephemeral=True)
+        except:
+            await interaction.response.send_message("⚠️ Could not DM the user.", ephemeral=True)
+
+
+# ================================
+# Claim Panel Buttons (Main View)
+# ================================
+class ClaimView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="💰 Check Balance", style=discord.ButtonStyle.primary)
+    async def check_balance(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Yaha baad me DB balance system connect karna
+        await interaction.response.send_message("💳 Your balance is: **0 PC**", ephemeral=True)
+
+    @discord.ui.button(label="📦 Claim PC", style=discord.ButtonStyle.success)
+    async def claim_pc(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(ClaimModal())
 @bot.command()
 async def claimpanel(ctx):
     # ✅ Sirf tu (Ishan Jain ka Discord ID)
