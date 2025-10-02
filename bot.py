@@ -154,29 +154,51 @@ class ClaimView(discord.ui.View):
         await log_channel.send(embed=embed)
 
         await interaction.response.send_message("✅ Your claim has been recorded and is pending admin review.", ephemeral=True)
-
-
 @bot.command()
 async def claimpanel(ctx):
+    # ✅ Sirf tu (Ishan Jain ka Discord ID)
+    if ctx.author.id != 1364880828949336088:
+        await ctx.send("❌ Sirf bot owner is command ko use kar sakta hai.")
+        return
+
     embed = discord.Embed(
         title="Poketwo Claim Panel",
         description=(
-            "Welcome to the **Claim Panel**!\n\n"
-            "👉 Use the buttons below:\n"
-            "• **💰 Check Balance** → See how many Pokecoins (PC) you currently have.\n"
-            "• **📦 Claim PC** → Submit a claim for your Pokecoins.\n\n"
-            "📜 Note:\n"
-            "- All claims go into the `#claims-log` channel for admin approval.\n"
-            "- Admins can Accept/Reject manually.\n"
-            "- On Accept → you will be credited.\n"
-            "- On Reject → you will be notified in DM.\n\n"
-            "⚡ Integrated with **Tobi.exe** style claim box per 100 messages!"
+            "📦 **Welcome to Poketwo Claim Panel**\n\n"
+            "👋 Hello Trainer! Ye system specially banaya gaya hai taaki tum apne Pokecoins (PC) "
+            "claim aur manage kar sako.\n\n"
+            "⚙️ **How it works:**\n"
+            "1. **💰 Check Balance** → Dekho tumhare paas kitne PC hai.\n"
+            "2. **📦 Claim PC** → Apna Market ID + Price dal ke claim submit karo.\n"
+            "   - Agar tumhare balance se zyada PC daloge → ❌ Invalid Price.\n"
+            "   - Agar sahi hai → Claim `#claims-log` channel me jayega.\n\n"
+            "🛠 **Admin Process:**\n"
+            "- Admin claim ko ✅ Accept ya ❌ Reject karenge.\n"
+            "- Agar Accept hua → Balance se PC deduct honge + tumhe DM me confirmation.\n"
+            "- Agar Reject hua → DM me invalid Market ID ya Price ka message.\n\n"
+            "📜 **Additional Info:**\n"
+            "- Har user ke claims ka record DB me maintain hota hai.\n"
+            "- Claimed count alag se track hota hai.\n"
+            "- Integration with **Tobi.exe style**: Har 100 messages par ek reward box milega "
+            "jo claim panel ke balance me add ho jayega.\n\n"
+            "⚡ Use the buttons below to get started!"
         ),
         color=discord.Color.purple()
     )
-    embed.set_footer(text=FOOTER_TEXT, icon_url=bot.user.avatar.url if bot.user.avatar else None)
 
+    # Bot avatar thumbnail
+    if bot.user.avatar:
+        embed.set_thumbnail(url=bot.user.avatar.url)
+
+    # Footer
+    embed.set_footer(
+        text="Made By Kabir Juneja and Ishan Jain",
+        icon_url=bot.user.avatar.url if bot.user.avatar else None
+    )
+
+    # Send panel with ClaimView (buttons)
     await ctx.send(embed=embed, view=ClaimView())
+
 # -----------------------------
 # Flask Thread
 # -----------------------------
